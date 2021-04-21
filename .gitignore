@@ -1,0 +1,4 @@
+/.data/*
+*.pem
+/.logs/*
+config.js
