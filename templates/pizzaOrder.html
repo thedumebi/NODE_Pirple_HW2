@@ -1,0 +1,25 @@
+<h1>Your Cart</h1>
+<hr />
+
+<div class="pizzaOrder" id="pizzaOrder">
+    <div class="formError"></div>
+    <table id="cartListTable">
+        <tr>
+          <th>S/N</th>
+          <th>Item Code</th>
+          <th>Quantity</th>
+        </tr>
+        <tr id="noPizzaMessage">
+          <td colspan="5">
+            There are no items in your cart
+          </td>
+        </tr>
+      </table>
+</div>
+
+
+<form id="createOrderCTA" action="/api/orders", method="POST">
+    <input class="hiddenIdField" type="hidden" name="cartId" />
+    <input class="hiddenTokenField" type="hidden" name="token" />
+    <button type="submit" class="cta green">Order</a>
+</form>

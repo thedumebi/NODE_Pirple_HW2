@@ -142,6 +142,9 @@ app.logUserOut = function (redirectUser) {
 // Bind the forms
 app.bindForms = function () {
   if (document.querySelector("form")) {
+    var bodyClasses = document.querySelector("body").classList;
+    var primaryClass =
+      typeof bodyClasses[0] === "string" ? bodyClasses[0] : false;
     var allForms = document.querySelectorAll("form");
     for (var i = 0; i < allForms.length; i++) {
       allForms[i].addEventListener("submit", function (e) {
@@ -151,10 +154,13 @@ app.bindForms = function () {
         var path = this.action;
         var method = this.method.toUpperCase();
 
-        // Hide the error message (if it's currently shown due to a previous error)
-        document.querySelector("#" + formId + " .formError").style.display =
-          "none";
+        if (primaryClass === "pizzaOrder") formId = primaryClass;
 
+        // Hide the error message (if it's currently shown due to a previous error)
+        if (document.querySelector("#" + formId + " .formError")) {
+          document.querySelector("#" + formId + " .formError").style.display =
+            "none";
+        }
         // Hide the success message (if it's currently shown due to a previous success)
         if (document.querySelector("#" + formId + " .formSuccess")) {
           document.querySelector("#" + formId + " .formSuccess").style.display =
@@ -192,6 +198,9 @@ app.bindForms = function () {
               // Create a payload field names "id" if the elements name is actually uid
               if (nameOfElement === "uid") {
                 nameOfElement = "id";
+              }
+              if (nameOfElement === "quantity" || nameOfElement === "code") {
+                valueOfElement = Number(valueOfElement);
               }
               // If the element has the class "multiselect", add its value(s) as array elements
               if (classOfElement.indexOf("multiselect") > -1) {
@@ -258,7 +267,7 @@ app.formResponseProcessor = function (formId, requestPayload, responsePayload) {
   var functionToCall = false;
   // If account creation was successful, try to immediately log the user in
   if (formId === "accountCreate") {
-    // Take the phone and password, and use it to log the user in
+    // Take the email and password, and use it to log the user in
     var newPayload = {
       email: requestPayload.email,
       password: requestPayload.password,
@@ -289,7 +298,7 @@ app.formResponseProcessor = function (formId, requestPayload, responsePayload) {
         } else {
           // If successful, set the token and redirect the user
           app.setSessionToken(newResponsePayload);
-          window.location = "/items/list";
+          window.location = "/pizza/list";
         }
       }
     );
@@ -298,7 +307,7 @@ app.formResponseProcessor = function (formId, requestPayload, responsePayload) {
   // If login was successful, set the token in localstorage and redirect the user
   if (formId === "sessionCreate") {
     app.setSessionToken(responsePayload);
-    window.location = "/items/list";
+    window.location = "/pizza/list";
   }
 
   // If forms saved successfully and they have success messages, show them
@@ -306,6 +315,7 @@ app.formResponseProcessor = function (formId, requestPayload, responsePayload) {
     "accountEdit1",
     "accountEdit2",
     "checksEdit1",
+    "cartFill",
   ];
   if (formsWithSuccessMessages.indexOf(formId) > -1) {
     document.querySelector("#" + formId + " .formSuccess").style.display =
@@ -442,19 +452,34 @@ app.loadDataOnPage = function () {
   if (primaryClass === "accountEdit") {
     app.loadAccountEditPage();
   }
+
+  // Logic for menu page
+  if (primaryClass === "pizzaList") {
+    app.loadPizzaListPage();
+  }
+
+  // Logic for add to cart page
+  if (primaryClass === "cartFill") {
+    app.loadCartFillPage("cartFill");
+  }
+
+  // Logic for add to cart page
+  if (primaryClass === "pizzaOrder") {
+    app.loadPizzaOrderPage("pizzaOrder");
+  }
 };
 
 // Load the account edit page specifically
 app.loadAccountEditPage = function () {
-  // Get the phone number from the current token, or log the user out if there is none
-  var phone =
-    typeof app.config.sessionToken.phone === "string"
-      ? app.config.sessionToken.phone
+  // Get the email from the current token, or log the user out if there is none
+  var email =
+    typeof app.config.sessionToken.email === "string"
+      ? app.config.sessionToken.email
       : false;
-  if (phone) {
+  if (email) {
     // Fetch the user data
     var queryStringObject = {
-      phone,
+      email,
     };
     app.client.request(
       undefined,
@@ -469,18 +494,233 @@ app.loadAccountEditPage = function () {
             responsePayload.firstName;
           document.querySelector("#accountEdit1 .lastNameInput").value =
             responsePayload.lastName;
-          document.querySelector("#accountEdit1 .displayPhoneInput").value =
-            responsePayload.phone;
+          document.querySelector("#accountEdit1 .displayEmailInput").value =
+            responsePayload.email;
 
-          // Put the hidden phone fiels into both forms
-          var hiddenPhoneInputs = document.querySelectorAll(
-            "input.hiddenPhoneNumberInput"
+          // Put the hidden email fiels into both forms
+          var hiddenEmailInputs = document.querySelectorAll(
+            "input.hiddenEmailInput"
           );
-          for (var i = 0; i < hiddenPhoneInputs.length; i++) {
-            hiddenPhoneInputs[i].value = responsePayload.phone;
+          for (var i = 0; i < hiddenEmailInputs.length; i++) {
+            hiddenEmailInputs[i].value = responsePayload.email;
           }
         } else {
           // if the request comes back with anything other than 200
+          app.logUserOut();
+        }
+      }
+    );
+  } else {
+    app.logUserOut();
+  }
+};
+
+// Load the items list page specifically
+app.loadPizzaListPage = () => {
+  // Get email from current token, or log user out if none
+  const email =
+    typeof app.config.sessionToken.email === "string"
+      ? app.config.sessionToken.email
+      : false;
+  if (email) {
+    // Fetch menu data
+    const queryStringObject = { email };
+    app.client.request(
+      undefined,
+      "api/menu",
+      "GET",
+      queryStringObject,
+      undefined,
+      (statusCode, responsePayload) => {
+        if (statusCode === 200) {
+          // check how many items are available
+          const allItems =
+            typeof responsePayload === "object" &&
+            responsePayload instanceof Array &&
+            responsePayload.length > 0
+              ? responsePayload
+              : [];
+          if (allItems.length >= 0) {
+            // show each item as a new row in the table
+            const table = document.getElementById("pizzaTable");
+            allItems.forEach((item, index) => {
+              const tr = table.insertRow(-1);
+              tr.classList.add("itemRow");
+              const td0 = tr.insertCell(0);
+              const td1 = tr.insertCell(1);
+              const td2 = tr.insertCell(2);
+              const td3 = tr.insertCell(3);
+              const td4 = tr.insertCell(4);
+              td0.innerHTML = index + 1;
+              td1.innerHTML = item.name;
+              td2.innerHTML = item.price;
+              td3.innerHTML = item.code;
+              td4.innerHTML = `<a href="/pizza/cart?code=${item.code}">Add to Cart</a>`;
+            });
+          } else {
+            // show no item available message
+            document.getElementById("noPizzaMessage").style.display =
+              "table-row";
+          }
+        } else {
+          app.logUserOut();
+        }
+      }
+    );
+  } else {
+    app.logUserOut();
+  }
+};
+
+// Load the add to cart page specifically
+app.loadCartFillPage = (formId) => {
+  // Get email from current token, or log user out if none
+  const email =
+    typeof app.config.sessionToken.email === "string"
+      ? app.config.sessionToken.email
+      : false;
+  if (email) {
+    const queryParams = window.location.search;
+    const urlParams = new URLSearchParams(queryParams);
+    // Get the pizza code from the query string. if none is found then redirect to items list page
+    const code =
+      typeof urlParams.get("code") === "string" &&
+      urlParams.get("code").length > 0
+        ? urlParams.get("code")
+        : false;
+    if (code && code > 0) {
+      const queryStringObject = { email, code: Number(code) };
+      app.client.request(
+        undefined,
+        "api/menu",
+        "GET",
+        queryStringObject,
+        undefined,
+        (statusCode, responsePayload) => {
+          if (statusCode === 200) {
+            // Put the hidden email and code inputs in the form
+            document.querySelector("input.hiddenEmailInput").value = email;
+            document.querySelector("input.hiddenCodeInput").value =
+              responsePayload.code;
+
+            // Put the other data into the form
+            document.querySelector("#cartFill .itemNameInput").value =
+              responsePayload.name;
+            document.querySelector("#cartFill .itemPriceInput").value =
+              responsePayload.price;
+          } else {
+            // Try to get the error from the api, or set a default error message
+            const error =
+              typeof responsePayload.Error == "string"
+                ? responsePayload.Error
+                : "Sorry, an error has occured, please try again";
+
+            // Set the formError field with the error text
+            document.querySelector("#" + formId + " .formError").innerHTML =
+              error;
+
+            // Show (unhide) the form error field on the form
+            document.querySelector("#" + formId + " .formError").style.display =
+              "block";
+          }
+        }
+      );
+    } else {
+      window.location = "/pizza/list";
+    }
+  } else {
+    app.logUserOut();
+  }
+};
+
+// load order page
+app.loadPizzaOrderPage = () => {
+  // Get email from current token, or log user out if none
+  const email =
+    typeof app.config.sessionToken.email === "string"
+      ? app.config.sessionToken.email
+      : false;
+  if (email) {
+    // Fetch the user data
+    const queryStringObject = {
+      email,
+    };
+    app.client.request(
+      undefined,
+      "api/users",
+      "GET",
+      queryStringObject,
+      undefined,
+      (statusCode, responsePayload) => {
+        if (statusCode === 200) {
+          // Determine if the user has a cart or not
+          const cart =
+            typeof responsePayload.cart === "string" &&
+            responsePayload.cart.length > 0
+              ? responsePayload.cart
+              : false;
+          if (cart) {
+            // get cart data
+            const newQueryStringObject = { id: cart };
+            app.client.request(
+              undefined,
+              "api/carts",
+              "GET",
+              newQueryStringObject,
+              undefined,
+              (newStatusCode, newResponsePayload) => {
+                if (newStatusCode === 200) {
+                  // put out items in the cart
+                  const cartItems = newResponsePayload.items;
+                  if (cartItems.length > 0) {
+                    document.querySelector("input.hiddenIdField").value = cart;
+
+                    cartItems.forEach((cartItem) => {
+                      const table = document.getElementById("cartListTable");
+                      const tr = table.insertRow(-1);
+                      tr.classList.add("orderRow");
+                      const td0 = tr.insertCell(0);
+                      const td1 = tr.insertCell(1);
+                      const td2 = tr.insertCell(2);
+                      td0.innerHTML = cartItem.id;
+                      td1.innerHTML = cartItem.itemCode;
+                      td2.innerHTML = cartItem.quantity;
+                    });
+
+                    // schow the createOrder CTA
+                    document.getElementById("createOrderCTA").style.display =
+                      "block";
+                  } else {
+                    // Show you have no items in your cart
+                    document.getElementById("noPizzaMessage").style.display =
+                      "table-row";
+                  }
+                } else {
+                  // Try to get the error from the api, or set a default error message
+                  const error =
+                    typeof responsePayload.Error == "string"
+                      ? responsePayload.Error
+                      : "Sorry, an error has occured, please try again";
+
+                  // Set the formError field with the error text
+                  document.querySelector("#pizzaOrder .formError").innerHTML =
+                    error;
+
+                  // Show (unhide) the error field on the form
+                  document.querySelector(
+                    "#pizzaOrder .formError"
+                  ).style.display = "block";
+                }
+              }
+            );
+          } else {
+            // Show you have no cart message
+            document.getElementById("noCartMessage").style.display = "block";
+
+            // schow the start shopping CTA
+            document.getElementById("startShopping").style.display = "block";
+          }
+        } else {
           app.logUserOut();
         }
       }

@@ -276,18 +276,18 @@ body,p,h1,h2,h3,h4,h5,h6,div,span,header,footer,img,a,a:hover,a:active,a:visited
   
   /* Page specific styles for dashboard */
   
-  #noChecksMessage td{
+  #noPizzaMessage td{
     text-align: center;
     font-style: italic;
     font-size: 20px;
     padding: 20px;
   }
   
-  #noChecksMessage{
+  #noPizzaMessage{
     display: none;
   }
   
-  #createCheckCTA{
+  #createOrderCTA{
     margin-top: 40px;
     display: none;
   }
